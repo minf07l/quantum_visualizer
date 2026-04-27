@@ -24,9 +24,9 @@ class QuantumVizApp:
     def create_main_menu(self):
         Text("Интерактивный визуализатор\nквантовых алгоритмов",
              origin=(0,0), scale=2, position=(0, 0.3), parent=self.main_menu)
-        Button(text="📚 Теория алгоритмов", scale=(0.3,0.1), position=(0,0),
+        Button(text="📚 Теория алгоритмов", scale=(0.35,0.1), position=(0,0),
                parent=self.main_menu, on_click=lambda: self.show_panel('theory'))
-        Button(text="🎛️ Визуализация алгоритмов", scale=(0.3,0.1), position=(0,-0.15),
+        Button(text="🎛️ Визуализация алгоритмов", scale=(0.35,0.1), position=(0,-0.15),
                parent=self.main_menu, on_click=lambda: self.show_panel('viz'))
         Button(text="Выход", scale=(0.2,0.08), position=(0,-0.35),
                parent=self.main_menu, on_click=application.quit)
