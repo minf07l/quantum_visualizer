@@ -1,6 +1,6 @@
 from ursina import *
-from shor_viz_stub import ShorVizStub
-from grover_viz_stub import GroverVizStub
+from shor_viz import ShorViz
+from grover_viz import GroverViz
 
 class VizPanel(Entity):
     def __init__(self, app_controller):
@@ -20,8 +20,8 @@ class VizPanel(Entity):
                                color=color.orange, text_color=color.white,
                                parent=self.choice_menu, on_click=self.controller.back_to_main)
 
-        self.shor_stub = ShorVizStub(self.controller, self)
-        self.grover_stub = GroverVizStub(self.controller, self)
+        self.shor_stub = ShorViz(self.controller, self)
+        self.grover_stub = GroverViz(self.controller, self)
 
         self.show_choice_menu()
         self.hide()
@@ -39,7 +39,10 @@ class VizPanel(Entity):
         self.grover_stub.hide()
 
     def input(self, key):
-        pass
+        if self.shor_stub.enabled:
+            self.shor_stub.input(key)
+        elif self.grover_stub.enabled:
+            self.grover_stub.input(key)
 
     def show(self):
         self.enabled = True
