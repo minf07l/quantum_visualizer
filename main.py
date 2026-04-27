@@ -13,7 +13,6 @@ window.entity_counter.enabled = False
 window.collider_counter.enabled = False
 window.cog_menu.enabled = False
 
-
 class QuantumVizApp:
     def __init__(self):
         self.theory = TheoryPanel(self)
@@ -23,13 +22,14 @@ class QuantumVizApp:
         self.show_main_menu()
 
     def create_main_menu(self):
-        Text("Интерактивный визуализатор\nквантовых алгоритмов", origin=(0, 0), scale=2, position=(0, 0.3),
-             parent=self.main_menu)
-        Button(text="📚 Теория алгоритмов", scale=(0.3, 0.1), position=(0, 0), parent=self.main_menu,
-               on_click=lambda: self.show_panel('theory'))
-        Button(text="🎛️ Визуализация алгоритмов", scale=(0.3, 0.1), position=(0, -0.15), parent=self.main_menu,
-               on_click=lambda: self.show_panel('viz'))
-        Button(text="Выход", scale=(0.2, 0.08), position=(0, -0.35), parent=self.main_menu, on_click=application.quit)
+        Text("Интерактивный визуализатор\nквантовых алгоритмов",
+             origin=(0,0), scale=2, position=(0, 0.3), parent=self.main_menu)
+        Button(text="📚 Теория алгоритмов", scale=(0.3,0.1), position=(0,0),
+               parent=self.main_menu, on_click=lambda: self.show_panel('theory'))
+        Button(text="🎛️ Визуализация алгоритмов", scale=(0.3,0.1), position=(0,-0.15),
+               parent=self.main_menu, on_click=lambda: self.show_panel('viz'))
+        Button(text="Выход", scale=(0.2,0.08), position=(0,-0.35),
+               parent=self.main_menu, on_click=application.quit)
 
     def show_panel(self, panel_name):
         self.main_menu.enabled = False
@@ -46,6 +46,11 @@ class QuantumVizApp:
     def back_to_main(self):
         self.show_main_menu()
 
+    def input(self, key):
+        if self.theory.enabled:
+            self.theory.input(key)
+        elif self.viz.enabled:
+            self.viz.input(key)
 
 if __name__ == '__main__':
     app_instance = QuantumVizApp()
