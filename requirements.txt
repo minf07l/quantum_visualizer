@@ -1,0 +1,12 @@
+qiskit==1.0.0
+qiskit-aer==0.13.3
+pylatexenc==2.10
+
+ursina==6.1.2
+
+networkx==3.2.1
+
+numpy==1.26.3
+scipy==1.12.0
+
+matplotlib==3.8.2
