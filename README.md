@@ -1,6 +1,8 @@
 # quantum_visualizer
 MIPT Python project :)
 
+Made by Alimaskin Maksim & Lichmanov Mikhail...
+
 
 Главная идея проекта
 
