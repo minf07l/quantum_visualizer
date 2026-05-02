@@ -89,16 +89,35 @@ class ShorViz(Entity):
         self.parent_panel = parent_panel
         self.enabled = False
 
-        self.safe_right = 0.78
-        self.safe_top = 0.39
-        self.panel_x = -0.54
-        self.panel_width = 0.38
-        self.button_left_x = -0.62
-        self.button_right_x = -0.46
-        self.chart_x = 0.18
+        self.left_x = -0.55
+        self.left_width = 0.34
+        self.right_x = 0.20
+        self.right_width = 0.88
+        self.top_y = 0.29
+        self.top_height = 0.16
+        self.bottom_y = -0.10
+        self.bottom_height = 0.58
+        self.chart_x = 0.08
+        self.chart_inner_width = 0.54
+        self.chart_inner_height = 0.46
+        self.chart_inner_y = self.bottom_y - 0.015
+        self.info_panel_x = 0.50
+        self.info_panel_width = 0.26
+        self.info_panel_height = 0.46
         self.chart_bottom_y = -0.18
-        self.chart_width = 0.78
+        self.chart_width = 0.54
         self.bar_max_height = 0.31
+        self.chart_label_y = self.chart_inner_y - self.chart_inner_height / 2 - 0.028
+        self.measure_lane_left = self.right_x - 0.37
+        self.measure_lane_width = 0.74
+        self.info_panel_top = self.chart_inner_y + self.info_panel_height / 2
+        self.info_panel_left = self.info_panel_x - self.info_panel_width / 2 + 0.05
+        self.side_gap = 0.015
+        self.text_panel_height = 0.14
+        self.states_panel_height = self.chart_inner_height - self.text_panel_height - self.side_gap
+        self.text_panel_y = self.chart_inner_y + self.chart_inner_height / 2 - self.text_panel_height / 2
+        self.states_panel_y = self.chart_inner_y - self.chart_inner_height / 2 + self.states_panel_height / 2
+        self.side_panel_width = 0.25
 
         self.samples = [15, 21, 33, 35, 39, 51, 55, 57, 65, 77, 85, 91]
         self.number_index = 0
@@ -120,160 +139,189 @@ class ShorViz(Entity):
         self.recovered_order = None
         self.result_factors = None
         self.phase_fraction = 0.0
+        self.recovery_candidates = []
+        self.recovery_choice = None
 
         self.bars = []
         self.x_labels = []
         self.value_labels = []
         self.stage_cards = {}
         self.fraction_markers = []
+        self.peak_markers = []
+        self.axis_panel = None
+        self.measure_panel = None
+        self.info_content_panel = None
+        self.text_content_panel = None
+        self.states_content_panel = None
 
         self._setup_scene()
         self._setup_ui()
         self._set_number(self.number_index)
         self.hide()
 
+    def _panel(self, x, y, width, height, inner=False):
+        Entity(
+            parent=self,
+            model="quad",
+            position=(x, y, 0.02),
+            scale=(width, height, 1),
+            color=color.rgb(14, 20, 32) if not inner else color.rgb(20, 28, 42),
+        )
+        Entity(
+            parent=self,
+            model="quad",
+            position=(x, y + height / 2 - 0.002, 0.01),
+            scale=(width, 0.004, 1),
+            color=color.rgb(78, 92, 120),
+        )
+        Entity(
+            parent=self,
+            model="quad",
+            position=(x, y - height / 2 + 0.002, 0.01),
+            scale=(width, 0.004, 1),
+            color=color.rgb(78, 92, 120),
+        )
+        Entity(
+            parent=self,
+            model="quad",
+            position=(x - width / 2 + 0.002, y, 0.01),
+            scale=(0.004, height, 1),
+            color=color.rgb(78, 92, 120),
+        )
+        Entity(
+            parent=self,
+            model="quad",
+            position=(x + width / 2 - 0.002, y, 0.01),
+            scale=(0.004, height, 1),
+            color=color.rgb(78, 92, 120),
+        )
+
     def _setup_scene(self):
-        Entity(
-            parent=self,
-            model="quad",
-            position=(self.chart_x, 0.02, 0),
-            scale=(0.96, 0.54, 1),
-            color=color.rgb(16, 22, 34),
-        )
-        Entity(
-            parent=self,
-            model="quad",
-            position=(self.chart_x, 0.02, -0.01),
-            scale=(0.86, 0.46, 1),
-            color=color.rgb(21, 29, 45),
-        )
+        self._panel(self.left_x, self.top_y, self.left_width, self.top_height)
+        self._panel(self.right_x, self.top_y, self.right_width, self.top_height)
+        self._panel(self.left_x, self.bottom_y, self.left_width, self.bottom_height)
+        self._panel(self.right_x, self.bottom_y, self.right_width, self.bottom_height)
+        self._panel(self.chart_x, self.chart_inner_y, self.chart_inner_width, self.chart_inner_height, inner=True)
+        self._panel(self.info_panel_x, self.text_panel_y, self.side_panel_width, self.text_panel_height, inner=True)
+        self._panel(self.info_panel_x, self.states_panel_y, self.side_panel_width, self.states_panel_height, inner=True)
+        self.axis_panel = Entity(parent=self, position=(self.chart_x, self.chart_label_y + 0.01, -0.08))
+        self.measure_panel = Entity(parent=self, position=(self.right_x, self.top_y, -0.08))
+        self.info_content_panel = Entity(parent=self, position=(self.info_panel_x, self.chart_inner_y, -0.08))
+        self.text_content_panel = Entity(parent=self, position=(self.info_panel_x, self.text_panel_y, -0.08))
+        self.states_content_panel = Entity(parent=self, position=(self.info_panel_x, self.states_panel_y, -0.08))
         self.baseline = Entity(
             parent=self,
             model="quad",
-            position=(self.chart_x, self.chart_bottom_y, -0.02),
+            position=(self.chart_x, self.chart_bottom_y, -0.03),
             scale=(self.chart_width, 0.004, 1),
             color=color.rgba(186, 194, 206, 220),
         )
         self.measure_line = Entity(
             parent=self,
             model="quad",
-            position=(self.chart_x, 0.24, -0.02),
-            scale=(0.76, 0.004, 1),
+            position=(self.right_x, 0.242, -0.03),
+            scale=(self.measure_lane_width, 0.004, 1),
             color=color.rgba(120, 170, 240, 160),
         )
         self.measure_dot = Entity(
             parent=self,
             model="quad",
-            position=(self.chart_x - 0.38, 0.24, -0.03),
+            position=(self.measure_lane_left, 0.242, -0.04),
             scale=(0.016, 0.016, 1),
             color=color.rgb(255, 202, 96),
         )
 
     def _setup_ui(self):
-        Entity(
-            parent=self,
-            model="quad",
-            position=(self.panel_x, 0.0, 0.01),
-            scale=(self.panel_width, 0.80, 1),
-            color=color.rgb(18, 24, 36),
-        )
+        self.controls_panel = Entity(parent=self, position=(self.left_x, self.bottom_y, -0.03))
         Text(
             parent=self,
             text="Shor Algorithm",
-            position=(-0.70, 0.31),
-            origin=(-0.5, 0),
-            scale=1.3,
+            position=(self.left_x, self.top_y - 0.01, -0.12),
+            origin=(0, 0),
+            scale=1.15,
             color=color.white,
         )
-        Text(
-            parent=self,
-            text="Period finding through modular powers.",
-            position=(-0.70, 0.255),
-            origin=(-0.5, 0),
-            scale=0.58,
-            color=color.rgb(185, 194, 208),
+        self.controls_text = Text(
+            parent=self.controls_panel,
+            text="Controls",
+            position=(0, 0.255, -0.12),
+            origin=(0, 0),
+            scale=0.98,
+            color=color.rgb(214, 222, 236),
         )
         self.info_text = Text(
-            parent=self,
+            parent=self.controls_panel,
             text="",
-            position=(-0.70, 0.16),
-            origin=(-0.5, 0),
-            scale=0.72,
+            position=(0, 0.19, -0.12),
+            origin=(0, 0),
+            scale=0.40,
             color=color.white,
         )
-        self.phase_text = Text(
-            parent=self,
-            text="",
-            position=(-0.70, 0.06),
-            origin=(-0.5, 0),
-            scale=0.62,
-            color=color.rgb(255, 209, 116),
-        )
         self.status_text = Text(
-            parent=self,
+            parent=self.text_content_panel,
             text="",
-            position=(-0.70, -0.02),
-            origin=(-0.5, 0),
-            scale=0.50,
-            color=color.rgb(196, 205, 218),
-        )
-        self.result_text = Text(
-            parent=self,
-            text="",
-            position=(-0.70, -0.13),
-            origin=(-0.5, 0),
-            scale=0.50,
-            color=color.rgb(120, 220, 154),
-        )
-        self.hover_text = Text(
-            parent=self,
-            text="",
-            position=(0.41, 0.31),
-            origin=(-0.5, 0),
-            scale=0.50,
-            color=color.rgb(185, 194, 208),
-        )
-        Text(
-            parent=self,
-            text="Measurement lane c / Q",
-            position=(-0.20, 0.285),
-            origin=(-0.5, 0),
-            scale=0.48,
-            color=color.rgb(185, 194, 208),
-        )
-        Text(
-            parent=self,
-            text="Space auto   Right step   R reset   N/A change number or base   Enter factor",
-            position=(0.0, -0.44),
+            position=(0, 0.035, -0.12),
             origin=(0, 0),
             scale=0.42,
-            color=color.rgb(146, 156, 172),
+            color=color.rgb(214, 222, 236),
+        )
+        self.result_text = Text(
+            parent=self.text_content_panel,
+            text="",
+            position=(0, -0.005, -0.12),
+            origin=(0, 0),
+            scale=0.38,
+            color=color.rgb(214, 222, 236),
+        )
+        self.recovery_text = Text(
+            parent=self.text_content_panel,
+            text="",
+            position=(0, -0.045, -0.12),
+            origin=(0, 0),
+            scale=0.34,
+            color=color.rgb(196, 205, 218),
+        )
+        self.hover_text = Text(
+            parent=self.text_content_panel,
+            text="",
+            position=(0, -0.080, -0.12),
+            origin=(-0.5, 0),
+            scale=0.0,
+            color=color.rgb(185, 194, 208),
+        )
+        self.measure_title = Text(
+            parent=self.measure_panel,
+            text="Measurement lane c / Q",
+            position=(0, 0.055, -0.12),
+            origin=(0, 0),
+            scale=0.70,
+            color=color.rgb(185, 194, 208),
         )
 
         self.back_button = self._button(
             "Back",
-            (self.button_left_x, -0.48),
+            (-0.072, -0.225),
             self.parent_panel.show_choice_menu,
         )
         self.home_button = self._button(
             "Home",
-            (self.button_right_x, -0.48),
+            (0.072, -0.225),
             self.controller.back_to_main,
             accent=True,
         )
         self.start_button = self._button(
             "Start",
-            (self.button_left_x, -0.20),
+            (-0.072, 0.125),
             self.toggle_run,
             accent=True,
         )
-        self.step_button = self._button("Step", (self.button_right_x, -0.20), self.step)
-        self.reset_button = self._button("Reset", (self.button_left_x, -0.27), self.reset_algorithm)
-        self.factor_button = self._button("Factor", (self.button_right_x, -0.27), self.run_to_completion)
-        self.n_minus_button = self._button("Number -", (self.button_left_x, -0.34), self.decrease_number)
-        self.n_plus_button = self._button("Number +", (self.button_right_x, -0.34), self.increase_number)
-        self.a_minus_button = self._button("Base -", (self.button_left_x, -0.41), self.decrease_witness)
-        self.a_plus_button = self._button("Base +", (self.button_right_x, -0.41), self.increase_witness)
+        self.step_button = self._button("Step", (0.072, 0.125), self.step)
+        self.reset_button = self._button("Reset", (-0.072, 0.055), self.reset_algorithm)
+        self.factor_button = self._button("Factor", (0.072, 0.055), self.run_to_completion)
+        self.n_minus_button = self._button("Number -", (-0.072, -0.015), self.decrease_number)
+        self.n_plus_button = self._button("Number +", (0.072, -0.015), self.increase_number)
+        self.a_minus_button = self._button("Base -", (-0.072, -0.085), self.decrease_witness)
+        self.a_plus_button = self._button("Base +", (0.072, -0.085), self.increase_witness)
 
         stage_names = [
             ("gcd", "GCD"),
@@ -282,46 +330,46 @@ class ShorViz(Entity):
             ("recover", "Recover"),
             ("factor", "Factor"),
         ]
-        start_x = -0.20
+        start_x = 0.0
         for offset, (stage_key, title) in enumerate(stage_names):
-            x = start_x + offset * 0.18
+            y = 0.085 - offset * 0.045
             card = Entity(
-                parent=self,
+                parent=self.states_content_panel,
                 model="quad",
-                position=(x, -0.31, 0.02),
-                scale=(0.14, 0.05, 1),
+                position=(start_x, y, -0.06),
+                scale=(0.18, 0.036, 1),
                 color=color.rgb(39, 50, 74),
             )
             Text(
-                parent=self,
+                parent=self.states_content_panel,
                 text=title,
-                position=(x, -0.316),
+                position=(start_x, y - 0.006, -0.12),
                 origin=(0, 0),
-                scale=0.44,
+                scale=0.42,
                 color=color.white,
             )
             self.stage_cards[stage_key] = card
 
-    def _button(self, text, position, on_click, accent=False):
+    def _button(self, text, local_position, on_click, accent=False):
         base_color = color.rgb(56, 72, 102) if not accent else color.rgb(86, 122, 214)
         hover_color = color.rgb(76, 92, 124) if not accent else color.rgb(106, 142, 232)
         press_color = color.rgb(40, 54, 78) if not accent else color.rgb(70, 106, 194)
         button = Button(
-            parent=self,
+            parent=self.controls_panel,
             text="",
-            position=position,
-            scale=(0.125, 0.054),
+            position=(local_position[0], local_position[1], -0.06),
+            scale=(0.112, 0.050),
             color=base_color,
             highlight_color=hover_color,
             pressed_color=press_color,
         )
         button.on_click = on_click
         button.label = Text(
-            parent=self,
+            parent=self.controls_panel,
             text=text,
-            position=(position[0], position[1] - 0.006),
+            position=(local_position[0], local_position[1] - 0.010, -0.12),
             origin=(0, 0),
-            scale=0.44,
+            scale=0.36,
             color=color.white,
         )
         return button
@@ -359,7 +407,7 @@ class ShorViz(Entity):
         return max(8, min(18, self.true_order + 2))
 
     def fraction_x(self, fraction: float) -> float:
-        return self.chart_x - 0.38 + 0.76 * fraction
+        return self.measure_lane_left + self.measure_lane_width * fraction
 
     def reset_algorithm(self):
         self.running = False
@@ -370,12 +418,15 @@ class ShorViz(Entity):
         self.recovered_order = None
         self.result_factors = None
         self.phase_fraction = 0.0
+        self.recovery_candidates = []
+        self.recovery_choice = None
         self.register_size = 1 << (2 * self.number.bit_length())
         self.true_order = multiplicative_order(self.witness, self.number)
         self.sequence_values = [1]
         self._set_button_label(self.start_button, "Start")
         self.rebuild_bars()
         self.rebuild_fraction_markers()
+        self.rebuild_peak_markers()
         self.update_visuals(animated=False)
         self.update_ui("Ready to inspect the modular sequence.")
 
@@ -404,9 +455,9 @@ class ShorViz(Entity):
             self.bars.append(bar)
             self.x_labels.append(
                 Text(
-                    parent=self,
+                    parent=self.axis_panel,
                     text=str(index),
-                    position=(x, -0.315),
+                    position=(x - self.chart_x, 0, 0),
                     origin=(0, 0),
                     scale=0.38,
                     color=color.rgb(222, 229, 240),
@@ -441,6 +492,50 @@ class ShorViz(Entity):
                 color=color.rgba(138, 168, 218, 150),
             )
             self.fraction_markers.append(marker)
+
+    def rebuild_peak_markers(self):
+        for marker in self.peak_markers:
+            destroy(marker)
+        self.peak_markers = []
+        if not self.true_order or self.true_order <= 1:
+            return
+
+        for numerator in range(self.true_order):
+            fraction = numerator / self.true_order
+            marker = Entity(
+                parent=self,
+                model="quad",
+                position=(self.fraction_x(fraction), 0.262, -0.024),
+                scale=(0.010, 0.010, 1),
+                color=color.rgba(255, 196, 88, 190),
+            )
+            self.peak_markers.append(marker)
+
+    def build_recovery_candidates(self):
+        if self.measurement is None:
+            return []
+
+        candidates = []
+        seen = set()
+        for numerator, denominator in continued_fraction_convergents(self.measurement, self.register_size):
+            if denominator == 0 or denominator in seen:
+                continue
+            seen.add(denominator)
+            matches = []
+            for multiplier in range(1, self.number + 1):
+                candidate = denominator * multiplier
+                if pow(self.witness, candidate, self.number) == 1:
+                    matches.append(candidate)
+                    if len(matches) >= 3:
+                        break
+            candidates.append(
+                {
+                    "fraction": f"{numerator}/{denominator}",
+                    "denominator": denominator,
+                    "matches": matches,
+                }
+            )
+        return candidates
 
     def bar_color(self, index: int, value: int):
         if index > self.scan_index and self.stage == "order":
@@ -519,6 +614,7 @@ class ShorViz(Entity):
                 self.true_order = self.scan_index
                 self.stage = "measure"
                 self.rebuild_fraction_markers()
+                self.rebuild_peak_markers()
                 self.update_visuals(animated=True)
                 self.update_ui(f"Found period r = {self.true_order}. Next step simulates phase estimation.")
             else:
@@ -534,17 +630,20 @@ class ShorViz(Entity):
             self.measurement = simulate_quantum_measurement(self.true_order, self.register_size, self.rng)
             self.phase_fraction = self.measurement / float(self.register_size)
             self.stage = "recover"
+            self.recovery_candidates = self.build_recovery_candidates()
+            self.recovery_choice = None
             self.update_visuals(animated=True)
             self.update_ui(f"Measured c = {self.measurement}, so c / Q = {self.phase_fraction:.3f}.")
             return
 
         if self.stage == "recover":
-            self.recovered_order = recover_period_from_measurement(
-                self.measurement,
-                self.register_size,
-                self.witness,
-                self.number,
-            )
+            self.recovered_order = None
+            self.recovery_choice = None
+            for candidate in self.recovery_candidates:
+                if candidate["matches"]:
+                    self.recovered_order = candidate["matches"][0]
+                    self.recovery_choice = candidate
+                    break
             self.stage = "factor"
             self.update_visuals(animated=False)
             if self.recovered_order is None:
@@ -585,19 +684,43 @@ class ShorViz(Entity):
             f"gcd(a, N) = {divisor}   Q = {self.register_size}\n"
             f"Useful bases {self.witness_index + 1}/{len(self.witness_choices)}"
         )
-        self.phase_text.text = (
-            f"Stage: {self.stage.upper()}\n"
-            f"Period r = {order_text}   Speed {self.auto_interval:.1f}s"
-        )
-        self.status_text.text = status
-
-        if self.result_factors is None:
-            measurement_text = "Measurement pending" if self.measurement is None else f"c = {self.measurement}"
-            recovered_text = "Recovered r pending" if self.recovered_order is None else f"Recovered r = {self.recovered_order}"
-            self.result_text.text = f"{measurement_text}\n{recovered_text}"
-        else:
+        if self.result_factors is not None:
             left, right = self.result_factors
-            self.result_text.text = f"Factors: {left} x {right}\nCheck: {left * right} = {self.number}"
+            self.status_text.text = "Stage: FACTOR"
+            self.result_text.text = f"Result: {self.number} = {left} x {right}"
+        elif self.stage == "gcd":
+            self.status_text.text = f"Stage: GCD   r = {order_text}"
+            self.result_text.text = status
+        elif self.stage == "order":
+            self.status_text.text = f"Stage: ORDER   r = {order_text}"
+            self.result_text.text = status
+        elif self.stage == "measure":
+            self.status_text.text = "Stage: MEASURE"
+            self.result_text.text = status
+        elif self.stage == "recover":
+            self.status_text.text = "Stage: RECOVER"
+            self.result_text.text = status
+        elif self.stage == "factor":
+            self.status_text.text = "Stage: FACTOR"
+            self.result_text.text = status
+        else:
+            self.status_text.text = "Stage: DONE"
+            self.result_text.text = status
+
+        if not self.recovery_candidates:
+            self.recovery_text.text = "Continued fractions\nwaiting for measurement"
+        else:
+            lines = ["Continued fractions"]
+            for candidate in self.recovery_candidates[:4]:
+                suffix = " -> no period"
+                if candidate["matches"]:
+                    suffix = f" -> {candidate['matches'][0]}"
+                prefix = "> " if self.recovery_choice is candidate else "  "
+                lines.append(f"{prefix}{candidate['fraction']}{suffix}")
+            self.recovery_text.text = "\n".join(lines)
+
+        if self.result_factors is None and self.measurement is not None and self.recovered_order is not None:
+            self.result_text.text = f"c = {self.measurement}   recovered r = {self.recovered_order}"
 
     def update_hover_text(self):
         hovered = mouse.hovered_entity
@@ -605,7 +728,7 @@ class ShorViz(Entity):
             index = hovered.step_index
             if index < len(self.sequence_values):
                 value = self.sequence_values[index]
-                marker = "  [active]" if index == self.scan_index and self.stage == "order" else ""
+                marker = " *" if index == self.scan_index and self.stage == "order" else ""
                 self.hover_text.text = f"x = {index}{marker}\n{self.witness}^{index} mod {self.number} = {value}"
             else:
                 self.hover_text.text = f"x = {index}\nSequence not expanded yet."
