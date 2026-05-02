@@ -1,7 +1,7 @@
 from math import pi, sqrt
 from random import random
 
-from ursina import Button, Entity, Text, color, curve, destroy, mouse, time
+from ursina import Button, Entity, Text, color, curve, destroy, time
 
 
 class GroverViz(Entity):
@@ -11,17 +11,20 @@ class GroverViz(Entity):
         self.parent_panel = parent_panel
         self.enabled = False
 
-        self.panel_x = -0.54
-        self.panel_width = 0.38
-        self.button_left_x = -0.62
-        self.button_right_x = -0.46
-        self.chart_x = 0.16
-        self.chart_width = 0.94
-        self.chart_height = 0.70
-        self.chart_inner_width = 0.86
-        self.chart_inner_height = 0.62
-        self.baseline_y = -0.08
-        self.max_bar_extent = 0.24
+        self.left_x = -0.55
+        self.left_width = 0.34
+        self.right_x = 0.20
+        self.right_width = 0.88
+        self.top_y = 0.29
+        self.top_height = 0.16
+        self.bottom_y = -0.10
+        self.bottom_height = 0.58
+        self.chart_inner_width = 0.78
+        self.chart_inner_height = 0.46
+        self.chart_inner_y = self.bottom_y - 0.015
+        self.baseline_y = -0.13
+        self.max_bar_extent = 0.22
+        self.chart_label_y = self.chart_inner_y - self.chart_inner_height / 2 - 0.028
 
         self.min_qubits = 2
         self.max_qubits = 5
@@ -38,7 +41,7 @@ class GroverViz(Entity):
 
         self.bars = []
         self.labels = []
-
+        self.axis_panel = None
         self._setup_scene()
         self._setup_ui()
         self.reset_algorithm()
@@ -49,148 +52,138 @@ class GroverViz(Entity):
         return 2 ** self.qubits
 
     def bit_label(self, index):
-        return format(index, f"0{self.qubits}b")
+        return str(index)
 
     def optimal_iterations(self):
         return max(1, int((pi / 4) * sqrt(self.n_states)))
 
+    def _panel(self, x, y, width, height, inner=False):
+        Entity(
+            parent=self,
+            model="quad",
+            position=(x, y, 0.02),
+            scale=(width, height, 1),
+            color=color.rgb(14, 20, 32) if not inner else color.rgb(20, 28, 42),
+        )
+        Entity(
+            parent=self,
+            model="quad",
+            position=(x, y + height / 2 - 0.002, 0.01),
+            scale=(width, 0.004, 1),
+            color=color.rgb(78, 92, 120),
+        )
+        Entity(
+            parent=self,
+            model="quad",
+            position=(x, y - height / 2 + 0.002, 0.01),
+            scale=(width, 0.004, 1),
+            color=color.rgb(78, 92, 120),
+        )
+        Entity(
+            parent=self,
+            model="quad",
+            position=(x - width / 2 + 0.002, y, 0.01),
+            scale=(0.004, height, 1),
+            color=color.rgb(78, 92, 120),
+        )
+        Entity(
+            parent=self,
+            model="quad",
+            position=(x + width / 2 - 0.002, y, 0.01),
+            scale=(0.004, height, 1),
+            color=color.rgb(78, 92, 120),
+        )
+
     def _setup_scene(self):
-        Entity(
-            parent=self,
-            model="quad",
-            position=(self.chart_x, 0.0, 0),
-            scale=(self.chart_width, self.chart_height, 1),
-            color=color.rgb(16, 22, 34),
-        )
-        Entity(
-            parent=self,
-            model="quad",
-            position=(self.chart_x, 0.0, -0.01),
-            scale=(self.chart_inner_width, self.chart_inner_height, 1),
-            color=color.rgb(20, 28, 42),
-        )
+        self._panel(self.left_x, self.top_y, self.left_width, self.top_height)
+        self._panel(self.right_x, self.top_y, self.right_width, self.top_height)
+        self._panel(self.left_x, self.bottom_y, self.left_width, self.bottom_height)
+        self._panel(self.right_x, self.bottom_y, self.right_width, self.bottom_height)
+        self._panel(self.right_x, self.chart_inner_y, self.chart_inner_width, self.chart_inner_height, inner=True)
+        self.axis_panel = Entity(parent=self, position=(self.right_x, self.chart_label_y + 0.01, -0.08))
         self.baseline = Entity(
             parent=self,
             model="quad",
-            position=(self.chart_x, self.baseline_y, -0.02),
+            position=(self.right_x, self.baseline_y, -0.03),
             scale=(0.76, 0.004, 1),
             color=color.rgba(190, 198, 214, 220),
         )
         self.mean_line = Entity(
             parent=self,
             model="quad",
-            position=(self.chart_x, 0.0, -0.02),
+            position=(self.right_x, 0.0, -0.03),
             scale=(0.76, 0.006, 1),
             color=color.rgba(100, 220, 170, 235),
         )
 
     def _setup_ui(self):
-        Entity(
-            parent=self,
-            model="quad",
-            position=(self.panel_x, 0.0, 0.01),
-            scale=(self.panel_width, 0.80, 1),
-            color=color.rgb(18, 24, 36),
-        )
-        Text(
+        self.controls_panel = Entity(parent=self, position=(self.left_x, self.bottom_y, -0.03))
+        self.title_text = Text(
             parent=self,
             text="Grover Search",
-            position=(-0.70, 0.31),
-            origin=(-0.5, 0),
-            scale=1.3,
+            position=(self.left_x, self.top_y - 0.01, -0.12),
+            origin=(0, 0),
+            scale=1.15,
             color=color.white,
         )
-        Text(
-            parent=self,
-            text="Search amplification made visual.",
-            position=(-0.70, 0.255),
-            origin=(-0.5, 0),
-            scale=0.62,
-            color=color.rgb(185, 194, 208),
+        self.controls_text = Text(
+            parent=self.controls_panel,
+            text="Controls",
+            position=(0, 0.255, -0.12),
+            origin=(0, 0),
+            scale=0.98,
+            color=color.rgb(214, 222, 236),
         )
-        self.info_text = Text(
-            parent=self,
+        self.selection_text = Text(
+            parent=self.controls_panel,
             text="",
-            position=(-0.70, 0.16),
-            origin=(-0.5, 0),
-            scale=0.76,
-            color=color.white,
-        )
-        self.phase_text = Text(
-            parent=self,
-            text="",
-            position=(-0.70, 0.05),
-            origin=(-0.5, 0),
-            scale=0.66,
-            color=color.rgb(255, 205, 110),
-        )
-        self.status_text = Text(
-            parent=self,
-            text="",
-            position=(-0.70, -0.03),
-            origin=(-0.5, 0),
-            scale=0.52,
-            color=color.rgb(196, 205, 218),
-        )
-        self.hover_text = Text(
-            parent=self,
-            text="",
-            position=(0.47, 0.31),
-            origin=(-0.5, 0),
-            scale=0.50,
-            color=color.rgb(185, 194, 208),
-        )
-        Text(
-            parent=self,
-            text="Space auto   Right step   Enter measure   R reset   M change target",
-            position=(0.0, -0.44),
+            position=(0, 0.185, -0.12),
             origin=(0, 0),
             scale=0.42,
-            color=color.rgb(146, 156, 172),
+            color=color.rgb(185, 194, 208),
+        )
+        self.status_banner = Text(
+            parent=self,
+            text="",
+            position=(self.right_x - 0.37, self.top_y - 0.015, -0.12),
+            origin=(-0.5, 0),
+            scale=0.88,
+            color=color.rgb(244, 92, 92),
         )
 
-        self.back_button = self._button(
-            "Back",
-            (self.button_left_x, -0.47),
-            self.parent_panel.show_choice_menu,
-        )
-        self.home_button = self._button(
-            "Home",
-            (self.button_right_x, -0.47),
-            self.controller.back_to_main,
-            accent=True,
-        )
-        self.start_button = self._button("Start", (self.button_left_x, -0.12), self.toggle_run)
-        self.step_button = self._button("Step", (self.button_right_x, -0.12), self.step)
-        self.measure_button = self._button("Measure", (self.button_left_x, -0.19), self.measure_state)
-        self.reset_button = self._button("Reset", (self.button_right_x, -0.19), self.reset_algorithm)
-        self.q_minus_button = self._button("Qubits -", (self.button_left_x, -0.26), self.decrease_qubits)
-        self.q_plus_button = self._button("Qubits +", (self.button_right_x, -0.26), self.increase_qubits)
-        self.m_minus_button = self._button("Target -", (self.button_left_x, -0.33), self.decrease_marked)
-        self.m_plus_button = self._button("Target +", (self.button_right_x, -0.33), self.increase_marked)
-        self.slower_button = self._button("Slower", (self.button_left_x, -0.40), self.slower)
-        self.faster_button = self._button("Faster", (self.button_right_x, -0.40), self.faster, accent=True)
+        self.start_button = self._button("Start", (-0.072, 0.125), self.toggle_run)
+        self.step_button = self._button("Step", (0.072, 0.125), self.step)
+        self.measure_button = self._button("Measure", (-0.072, 0.055), self.measure_state)
+        self.reset_button = self._button("Reset", (0.072, 0.055), self.reset_algorithm)
+        self.q_minus_button = self._button("Qubits -", (-0.072, -0.015), self.decrease_qubits)
+        self.q_plus_button = self._button("Qubits +", (0.072, -0.015), self.increase_qubits)
+        self.m_minus_button = self._button("Target -", (-0.072, -0.085), self.decrease_marked)
+        self.m_plus_button = self._button("Target +", (0.072, -0.085), self.increase_marked)
+        self.slower_button = self._button("Slower", (-0.072, -0.155), self.slower)
+        self.faster_button = self._button("Faster", (0.072, -0.155), self.faster, accent=True)
+        self.back_button = self._button("Back", (-0.072, -0.225), self.parent_panel.show_choice_menu)
+        self.home_button = self._button("Home", (0.072, -0.225), self.controller.back_to_main, accent=True)
 
-    def _button(self, text, position, on_click, accent=False):
+    def _button(self, text, local_position, on_click, accent=False):
         base_color = color.rgb(56, 72, 102) if not accent else color.rgb(86, 122, 214)
         hover_color = color.rgb(76, 92, 124) if not accent else color.rgb(106, 142, 232)
         press_color = color.rgb(40, 54, 78) if not accent else color.rgb(70, 106, 194)
         button = Button(
-            parent=self,
+            parent=self.controls_panel,
             text="",
-            position=position,
-            scale=(0.125, 0.054),
+            position=(local_position[0], local_position[1], -0.06),
+            scale=(0.112, 0.050),
             color=base_color,
             highlight_color=hover_color,
             pressed_color=press_color,
         )
         button.on_click = on_click
         button.label = Text(
-            parent=self,
+            parent=self.controls_panel,
             text=text,
-            position=(position[0], position[1] - 0.006),
+            position=(local_position[0], local_position[1] - 0.010, -0.12),
             origin=(0, 0),
-            scale=0.44,
+            scale=0.34,
             color=color.white,
         )
         return button
@@ -249,11 +242,18 @@ class GroverViz(Entity):
         self.labels = []
         count = self.n_states
 
-        chart_width = 0.78
+        chart_width = 0.72
         slot_width = chart_width / count
         bar_width = min(0.07, slot_width * 0.56)
-        start_x = self.chart_x - chart_width / 2 + slot_width / 2
-        label_scale = 0.54 if count <= 8 else 0.40 if count <= 16 else 0.28
+        start_x = self.right_x - chart_width / 2 + slot_width / 2
+        max_labels = 8 if count > 8 else count
+        label_indices = set()
+        if count <= max_labels:
+            label_indices = set(range(count))
+        else:
+            for slot in range(max_labels):
+                idx = round(slot * (count - 1) / (max_labels - 1))
+                label_indices.add(idx)
 
         for index in range(count):
             x = start_x + index * slot_width
@@ -267,22 +267,25 @@ class GroverViz(Entity):
             )
             bar.state_index = index
             self.bars.append(bar)
-
-            label = Text(
-                parent=self,
-                text=self.bit_label(index),
-                position=(x, -0.315),
-                origin=(0, 0),
-                scale=label_scale,
-                color=color.rgb(224, 230, 240),
-            )
-            self.labels.append(label)
+            if index in label_indices:
+                self.labels.append(
+                    Text(
+                        parent=self.axis_panel,
+                        text=str(index),
+                        position=(x - self.right_x, 0, 0),
+                        origin=(0, 0),
+                        scale=0.52 if count <= 8 else 0.38 if count <= 16 else 0.30,
+                        color=color.rgb(214, 222, 236),
+                    )
+                )
 
     def bar_color(self, index, amplitude):
-        if index == self.marked_index:
-            return color.rgb(255, 190, 80) if amplitude >= 0 else color.rgb(255, 132, 94)
         if self.measured_index == index:
             return color.rgb(80, 210, 120)
+        if self.measured_index is not None:
+            return color.rgb(50, 66, 94)
+        if index == self.marked_index:
+            return color.rgb(255, 190, 80) if amplitude >= 0 else color.rgb(255, 132, 94)
         return color.rgb(85, 170, 255) if amplitude >= 0 else color.rgb(230, 96, 108)
 
     def update_visuals(self, animated=True):
@@ -361,6 +364,9 @@ class GroverViz(Entity):
                 break
 
         self.measured_index = result
+        self.amplitudes = [0.0 for _ in range(self.n_states)]
+        self.amplitudes[result] = 1.0
+        self.last_mean = 1.0 / self.n_states
         self.update_visuals(animated=False)
 
         if result == self.marked_index:
@@ -368,39 +374,34 @@ class GroverViz(Entity):
         else:
             self.update_ui(f"Measured {self.bit_label(result)}. Target was {self.bit_label(self.marked_index)}.")
 
+    def describe_state(self):
+        target_probability = self.amplitudes[self.marked_index] * self.amplitudes[self.marked_index]
+        if self.measured_index is not None:
+            if self.measured_index == self.marked_index:
+                return f"Measured target {self.bit_label(self.marked_index)}."
+            return f"Measured {self.bit_label(self.measured_index)}. Target {self.bit_label(self.marked_index)}."
+        if self.phase == "oracle":
+            if self.iteration == 0:
+                return f"Ready. Target {self.bit_label(self.marked_index)} starts at {target_probability:.0%}."
+            if self.iteration >= self.optimal_iterations():
+                return f"Peak reached. Target {self.bit_label(self.marked_index)} at {target_probability:.0%}."
+            return f"Iteration {self.iteration}: target {self.bit_label(self.marked_index)} at {target_probability:.0%}."
+        return f"Oracle flips target {self.bit_label(self.marked_index)}."
+
     def update_ui(self, status):
         target_amplitude = self.amplitudes[self.marked_index]
         target_probability = target_amplitude * target_amplitude
-        recommended = self.optimal_iterations()
-
-        self.info_text.text = (
+        self.selection_text.text = (
             f"{self.qubits} qubits   {self.n_states} states\n"
-            f"Target {self.bit_label(self.marked_index)}\n"
-            f"Iteration {self.iteration} of {recommended}"
+            f"Target {self.bit_label(self.marked_index)}   Goal {self.optimal_iterations()} iterations\n"
+            f"Speed {self.auto_interval:.1f}s   Current chance {target_probability:.0%}"
         )
-        self.phase_text.text = (
-            f"{self.phase.upper()} phase\n"
-            f"Target chance {target_probability:.0%}   Speed {self.auto_interval:.1f}s"
-        )
-        self.status_text.text = status
-
-    def update_hover_text(self):
-        hovered = mouse.hovered_entity
-        if hovered is not None and hasattr(hovered, "state_index") and hovered in self.bars:
-            index = hovered.state_index
-            amplitude = self.amplitudes[index]
-            probability = amplitude * amplitude
-            marker = "  [marked]" if index == self.marked_index else ""
-            measured = "  [measured]" if index == self.measured_index else ""
-            self.hover_text.text = f"State {self.bit_label(index)}{marker}{measured}\nChance {probability:.0%}\nAmplitude {amplitude:+.3f}"
-        else:
-            self.hover_text.text = ""
+        self.status_banner.text = self.describe_state()
 
     def update(self):
         if not self.enabled:
             return
 
-        self.update_hover_text()
         if self.running:
             self.auto_timer += time.dt
             if self.auto_timer >= self.auto_interval:
