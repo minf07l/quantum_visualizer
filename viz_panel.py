@@ -44,6 +44,12 @@ class VizPanel(Entity):
         elif self.grover_stub.enabled:
             self.grover_stub.input(key)
 
+    def update(self):
+        if self.shor_stub.enabled:
+            self.shor_stub.tick(time.dt)
+        elif self.grover_stub.enabled:
+            self.grover_stub.tick(time.dt)
+
     def show(self):
         self.enabled = True
         self.show_choice_menu()
