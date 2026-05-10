@@ -46,7 +46,13 @@ class QuantumVizApp:
     def back_to_main(self):
         self.show_main_menu()
 
+    def exit_app(self):
+        application.quit()
+
     def input(self, key):
+        if key == 'escape':
+            self.exit_app()
+            return
         if self.theory.enabled:
             self.theory.input(key)
         elif self.viz.enabled:

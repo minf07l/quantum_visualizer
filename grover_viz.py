@@ -1,36 +1,25 @@
-from math import pi, sqrt
-from random import random
+from grover_math import diffusion_step, initial_amplitudes, measure_state, optimal_iterations, oracle_step
+from visualization_ui import (
+    BarChartWidget,
+    ControlGrid,
+    PanelBlock,
+    ReferenceLine,
+    Spacing,
+    VisualizationScaffold,
+)
 
-from ursina import Button, Entity, Text, color, curve, destroy, time
 
-
-class GroverViz(Entity):
+class GroverViz:
     def __init__(self, controller, parent_panel):
-        super().__init__(parent=parent_panel)
         self.controller = controller
         self.parent_panel = parent_panel
-        self.enabled = False
+        self.ui = VisualizationScaffold(parent_panel)
 
-        self.left_x = -0.55
-        self.left_width = 0.34
-        self.right_x = 0.20
-        self.right_width = 0.88
-        self.top_y = 0.29
-        self.top_height = 0.16
-        self.bottom_y = -0.10
-        self.bottom_height = 0.58
-        self.chart_inner_width = 0.78
-        self.chart_inner_height = 0.46
-        self.chart_inner_y = self.bottom_y - 0.015
-        self.baseline_y = -0.13
         self.max_bar_extent = 0.22
-        self.chart_label_y = self.chart_inner_y - self.chart_inner_height / 2 - 0.028
-
         self.min_qubits = 2
         self.max_qubits = 5
         self.qubits = 3
         self.marked_index = 5
-
         self.auto_interval = 0.85
         self.auto_timer = 0.0
         self.running = False
@@ -38,14 +27,105 @@ class GroverViz(Entity):
         self.iteration = 0
         self.last_mean = 0.0
         self.measured_index = None
+        self.amplitudes = []
 
-        self.bars = []
-        self.labels = []
-        self.axis_panel = None
-        self._setup_scene()
-        self._setup_ui()
+        self._build_ui()
         self.reset_algorithm()
         self.hide()
+
+    def _build_ui(self):
+        top_left_inner = self.ui.top_left.content_region(Spacing.md, Spacing.md)
+        top_right_inner = self.ui.top_right.content_region(Spacing.lg, Spacing.md)
+        bottom_left_inner = self.ui.bottom_left.content_region(Spacing.md, Spacing.md)
+        bottom_right_inner = self.ui.bottom_right.content_region(Spacing.md, Spacing.md)
+
+        left_rows = bottom_left_inner.split_rows([1, 2, 10], gap=Spacing.sm)
+        chart_rows = bottom_right_inner.split_rows([12, 1], gap=Spacing.sm)
+
+        self.chart_panel = PanelBlock(self.ui.root, chart_rows[0], inner=True)
+        self.chart_axis_region = chart_rows[1]
+
+        self.title_text = self.ui.top_left.add_text_in_region(top_left_inner, "Grover Search", scale=1.15, mode="shrink")
+        self.status_text = self.ui.top_right.add_text_in_region(
+            top_right_inner,
+            "",
+            scale=1.08,
+            text_color=(214, 222, 236),
+            mode="wrap_shrink",
+        )
+        self.controls_text = self.ui.bottom_left.add_text_in_region(
+            left_rows[0],
+            "Controls",
+            scale=1.20,
+            text_color=(214, 222, 236),
+            mode="shrink",
+        )
+        self.selection_text = self.ui.bottom_left.add_text_in_region(
+            left_rows[1],
+            "",
+            scale=0.64,
+            text_color=(185, 194, 208),
+            mode="wrap_shrink",
+        )
+
+        self.controls_grid = ControlGrid(
+            self.ui.bottom_left,
+            rows=6,
+            columns=2,
+            region=left_rows[2],
+            x_padding=0.0,
+            y_padding=0.0,
+            h_gap=Spacing.sm,
+            v_gap=Spacing.sm,
+        )
+
+        self.buttons = {
+            "start": self.controls_grid.add_button("Start", 0, 0, self.toggle_run),
+            "step": self.controls_grid.add_button("Step", 0, 1, self.step),
+            "measure": self.controls_grid.add_button("Measure", 1, 0, self.measure_current_state),
+            "reset": self.controls_grid.add_button("Reset", 1, 1, self.reset_algorithm),
+            "qubits_minus": self.controls_grid.add_button("Qubits -", 2, 0, self.decrease_qubits),
+            "qubits_plus": self.controls_grid.add_button("Qubits +", 2, 1, self.increase_qubits),
+            "target_minus": self.controls_grid.add_button("Target -", 3, 0, self.decrease_marked),
+            "target_plus": self.controls_grid.add_button("Target +", 3, 1, self.increase_marked),
+            "slower": self.controls_grid.add_button("Slower", 4, 0, self.slower),
+            "faster": self.controls_grid.add_button("Faster", 4, 1, self.faster, accent=True),
+            "back": self.controls_grid.add_button("Back", 5, 0, self.parent_panel.show_choice_menu),
+            "home": self.controls_grid.add_button("Home", 5, 1, self.controller.back_to_main, accent=True),
+        }
+
+        baseline_y = self.chart_panel.region.bottom + self.chart_panel.region.height * 0.18
+        line_width = self.chart_panel.region.width - 2 * Spacing.sm
+        self.baseline = ReferenceLine(
+            self.ui.root,
+            x=self.chart_panel.region.center_x,
+            y=baseline_y,
+            width=line_width,
+            thickness=0.004,
+            line_color=(190, 198, 214, 220),
+        )
+        self.mean_line = ReferenceLine(
+            self.ui.root,
+            x=self.chart_panel.region.center_x,
+            y=baseline_y,
+            width=line_width,
+            thickness=0.006,
+            line_color=(100, 220, 170, 235),
+        )
+        self.chart = BarChartWidget(
+            self.ui.root,
+            center_x=self.chart_panel.region.center_x,
+            baseline_y=baseline_y,
+            chart_width=self.chart_panel.region.width - 2 * Spacing.lg,
+            axis_parent=self.ui.root,
+            axis_label_y=self.chart_axis_region.center_y,
+            min_bar_height=0.02,
+            default_bar_color=(85, 170, 255),
+        )
+
+    @property
+    def enabled(self):
+        return self.ui.enabled
 
     @property
     def n_states(self):
@@ -54,142 +134,16 @@ class GroverViz(Entity):
     def bit_label(self, index):
         return str(index)
 
-    def optimal_iterations(self):
-        return max(1, int((pi / 4) * sqrt(self.n_states)))
+    def goal_iterations(self):
+        return optimal_iterations(self.n_states)
 
-    def _panel(self, x, y, width, height, inner=False):
-        Entity(
-            parent=self,
-            model="quad",
-            position=(x, y, 0.02),
-            scale=(width, height, 1),
-            color=color.rgb(14, 20, 32) if not inner else color.rgb(20, 28, 42),
-        )
-        Entity(
-            parent=self,
-            model="quad",
-            position=(x, y + height / 2 - 0.002, 0.01),
-            scale=(width, 0.004, 1),
-            color=color.rgb(78, 92, 120),
-        )
-        Entity(
-            parent=self,
-            model="quad",
-            position=(x, y - height / 2 + 0.002, 0.01),
-            scale=(width, 0.004, 1),
-            color=color.rgb(78, 92, 120),
-        )
-        Entity(
-            parent=self,
-            model="quad",
-            position=(x - width / 2 + 0.002, y, 0.01),
-            scale=(0.004, height, 1),
-            color=color.rgb(78, 92, 120),
-        )
-        Entity(
-            parent=self,
-            model="quad",
-            position=(x + width / 2 - 0.002, y, 0.01),
-            scale=(0.004, height, 1),
-            color=color.rgb(78, 92, 120),
-        )
+    def show(self):
+        self.ui.show()
 
-    def _setup_scene(self):
-        self._panel(self.left_x, self.top_y, self.left_width, self.top_height)
-        self._panel(self.right_x, self.top_y, self.right_width, self.top_height)
-        self._panel(self.left_x, self.bottom_y, self.left_width, self.bottom_height)
-        self._panel(self.right_x, self.bottom_y, self.right_width, self.bottom_height)
-        self._panel(self.right_x, self.chart_inner_y, self.chart_inner_width, self.chart_inner_height, inner=True)
-        self.axis_panel = Entity(parent=self, position=(self.right_x, self.chart_label_y + 0.01, -0.08))
-        self.baseline = Entity(
-            parent=self,
-            model="quad",
-            position=(self.right_x, self.baseline_y, -0.03),
-            scale=(0.76, 0.004, 1),
-            color=color.rgba(190, 198, 214, 220),
-        )
-        self.mean_line = Entity(
-            parent=self,
-            model="quad",
-            position=(self.right_x, 0.0, -0.03),
-            scale=(0.76, 0.006, 1),
-            color=color.rgba(100, 220, 170, 235),
-        )
-
-    def _setup_ui(self):
-        self.controls_panel = Entity(parent=self, position=(self.left_x, self.bottom_y, -0.03))
-        self.title_text = Text(
-            parent=self,
-            text="Grover Search",
-            position=(self.left_x, self.top_y - 0.01, -0.12),
-            origin=(0, 0),
-            scale=1.15,
-            color=color.white,
-        )
-        self.controls_text = Text(
-            parent=self.controls_panel,
-            text="Controls",
-            position=(0, 0.255, -0.12),
-            origin=(0, 0),
-            scale=0.98,
-            color=color.rgb(214, 222, 236),
-        )
-        self.selection_text = Text(
-            parent=self.controls_panel,
-            text="",
-            position=(0, 0.185, -0.12),
-            origin=(0, 0),
-            scale=0.42,
-            color=color.rgb(185, 194, 208),
-        )
-        self.status_banner = Text(
-            parent=self,
-            text="",
-            position=(self.right_x - 0.37, self.top_y - 0.015, -0.12),
-            origin=(-0.5, 0),
-            scale=0.88,
-            color=color.rgb(244, 92, 92),
-        )
-
-        self.start_button = self._button("Start", (-0.072, 0.125), self.toggle_run)
-        self.step_button = self._button("Step", (0.072, 0.125), self.step)
-        self.measure_button = self._button("Measure", (-0.072, 0.055), self.measure_state)
-        self.reset_button = self._button("Reset", (0.072, 0.055), self.reset_algorithm)
-        self.q_minus_button = self._button("Qubits -", (-0.072, -0.015), self.decrease_qubits)
-        self.q_plus_button = self._button("Qubits +", (0.072, -0.015), self.increase_qubits)
-        self.m_minus_button = self._button("Target -", (-0.072, -0.085), self.decrease_marked)
-        self.m_plus_button = self._button("Target +", (0.072, -0.085), self.increase_marked)
-        self.slower_button = self._button("Slower", (-0.072, -0.155), self.slower)
-        self.faster_button = self._button("Faster", (0.072, -0.155), self.faster, accent=True)
-        self.back_button = self._button("Back", (-0.072, -0.225), self.parent_panel.show_choice_menu)
-        self.home_button = self._button("Home", (0.072, -0.225), self.controller.back_to_main, accent=True)
-
-    def _button(self, text, local_position, on_click, accent=False):
-        base_color = color.rgb(56, 72, 102) if not accent else color.rgb(86, 122, 214)
-        hover_color = color.rgb(76, 92, 124) if not accent else color.rgb(106, 142, 232)
-        press_color = color.rgb(40, 54, 78) if not accent else color.rgb(70, 106, 194)
-        button = Button(
-            parent=self.controls_panel,
-            text="",
-            position=(local_position[0], local_position[1], -0.06),
-            scale=(0.112, 0.050),
-            color=base_color,
-            highlight_color=hover_color,
-            pressed_color=press_color,
-        )
-        button.on_click = on_click
-        button.label = Text(
-            parent=self.controls_panel,
-            text=text,
-            position=(local_position[0], local_position[1] - 0.010, -0.12),
-            origin=(0, 0),
-            scale=0.34,
-            color=color.white,
-        )
-        return button
-
-    def _set_button_label(self, button, text):
-        button.label.text = text
+    def hide(self):
+        self.running = False
+        self.auto_timer = 0.0
+        self.ui.hide()
 
     def reset_algorithm(self):
         self.running = False
@@ -198,15 +152,12 @@ class GroverViz(Entity):
         self.iteration = 0
         self.measured_index = None
         self.marked_index %= self.n_states
-
-        initial = 1 / sqrt(self.n_states)
-        self.amplitudes = [initial for _ in range(self.n_states)]
-        self.last_mean = initial
-
-        self._set_button_label(self.start_button, "Start")
-        self.rebuild_bars()
+        self.amplitudes = initial_amplitudes(self.n_states)
+        self.last_mean = self.amplitudes[0]
+        self.buttons["start"].set_text("Start")
+        self.rebuild_chart()
         self.update_visuals(animated=False)
-        self.update_ui("Uniform superposition ready.")
+        self.update_ui()
 
     def increase_qubits(self):
         if self.qubits < self.max_qubits:
@@ -228,115 +179,74 @@ class GroverViz(Entity):
 
     def faster(self):
         self.auto_interval = max(0.2, self.auto_interval - 0.1)
-        self.update_ui("Speed increased.")
+        self.update_ui()
 
     def slower(self):
         self.auto_interval = min(2.0, self.auto_interval + 0.1)
-        self.update_ui("Speed decreased.")
+        self.update_ui()
 
-    def rebuild_bars(self):
-        for entity in self.bars + self.labels:
-            destroy(entity)
-
-        self.bars = []
-        self.labels = []
+    def rebuild_chart(self):
         count = self.n_states
-
-        chart_width = 0.72
-        slot_width = chart_width / count
+        slot_width = self.chart.chart_width / count
         bar_width = min(0.07, slot_width * 0.56)
-        start_x = self.right_x - chart_width / 2 + slot_width / 2
         max_labels = 8 if count > 8 else count
-        label_indices = set()
         if count <= max_labels:
             label_indices = set(range(count))
         else:
-            for slot in range(max_labels):
-                idx = round(slot * (count - 1) / (max_labels - 1))
-                label_indices.add(idx)
-
-        for index in range(count):
-            x = start_x + index * slot_width
-            bar = Entity(
-                parent=self,
-                model="quad",
-                position=(x, -0.03, -0.03),
-                scale=(bar_width, 0.05, 1),
-                color=color.azure,
-                collider="box",
-            )
-            bar.state_index = index
-            self.bars.append(bar)
-            if index in label_indices:
-                self.labels.append(
-                    Text(
-                        parent=self.axis_panel,
-                        text=str(index),
-                        position=(x - self.right_x, 0, 0),
-                        origin=(0, 0),
-                        scale=0.52 if count <= 8 else 0.38 if count <= 16 else 0.30,
-                        color=color.rgb(214, 222, 236),
-                    )
-                )
+            label_indices = {round(slot * (count - 1) / (max_labels - 1)) for slot in range(max_labels)}
+        self.chart.rebuild(
+            count=count,
+            bar_width=bar_width,
+            base_height=0.05,
+            y=self.chart.baseline_y + 0.10,
+            label_indices=label_indices,
+            label_scale_fn=lambda _: 0.72 if count <= 8 else 0.56 if count <= 16 else 0.46,
+            show_value_labels=False,
+            bar_color=(85, 170, 255),
+            hover_key_name="state_index",
+        )
 
     def bar_color(self, index, amplitude):
         if self.measured_index == index:
-            return color.rgb(80, 210, 120)
+            return (80, 210, 120)
         if self.measured_index is not None:
-            return color.rgb(50, 66, 94)
+            return (50, 66, 94)
         if index == self.marked_index:
-            return color.rgb(255, 190, 80) if amplitude >= 0 else color.rgb(255, 132, 94)
-        return color.rgb(85, 170, 255) if amplitude >= 0 else color.rgb(230, 96, 108)
+            return (255, 190, 80) if amplitude >= 0 else (255, 132, 94)
+        return (85, 170, 255) if amplitude >= 0 else (230, 96, 108)
 
     def update_visuals(self, animated=True):
         duration = 0.28 if animated else 0.0
-        max_amplitude = max(
-            max(abs(amplitude) for amplitude in self.amplitudes),
-            abs(self.last_mean),
-            0.001,
-        )
+        max_amplitude = max(max(abs(amplitude) for amplitude in self.amplitudes), abs(self.last_mean), 0.001)
         visual_scale = self.max_bar_extent / max_amplitude
-        mean_y = self.baseline_y + self.last_mean * visual_scale
+        mean_y = self.chart.baseline_y + self.last_mean * visual_scale
+        self.mean_line.set_y(mean_y, animated=animated, duration=duration)
 
-        if animated:
-            self.mean_line.animate("y", mean_y, duration=duration, curve=curve.out_cubic)
-        else:
-            self.mean_line.y = mean_y
-
-        for index, bar in enumerate(self.bars):
-            amplitude = self.amplitudes[index]
+        for index, amplitude in enumerate(self.amplitudes):
             visual_height = amplitude * visual_scale
             height = max(abs(visual_height), 0.02)
-            center_y = self.baseline_y + visual_height / 2
-
-            if animated:
-                bar.animate("scale_y", height, duration=duration, curve=curve.out_cubic)
-                bar.animate("y", center_y, duration=duration, curve=curve.out_cubic)
-            else:
-                bar.scale_y = height
-                bar.y = center_y
-
-            bar.color = self.bar_color(index, amplitude)
+            center_y = self.chart.baseline_y + visual_height / 2
+            self.chart.set_bar(
+                index,
+                height=height,
+                center_y=center_y,
+                bar_color=self.bar_color(index, amplitude),
+                animated=animated,
+                duration=duration,
+            )
 
     def do_oracle(self):
-        self.amplitudes[self.marked_index] *= -1
-        self.last_mean = sum(self.amplitudes) / self.n_states
+        self.amplitudes, self.last_mean = oracle_step(self.amplitudes, self.marked_index)
         self.phase = "diffusion"
         self.update_visuals(animated=True)
-        self.update_ui("Oracle flipped the target phase.")
+        self.update_ui()
 
     def do_diffusion(self):
-        self.last_mean = sum(self.amplitudes) / self.n_states
-        self.amplitudes = [(2 * self.last_mean - amplitude) for amplitude in self.amplitudes]
-        self.last_mean = sum(self.amplitudes) / self.n_states
+        self.amplitudes, self.last_mean = diffusion_step(self.amplitudes)
         self.iteration += 1
         self.phase = "oracle"
         self.update_visuals(animated=True)
-
-        if self.iteration >= self.optimal_iterations():
-            self.update_ui("Diffusion done. You can measure now.")
-        else:
-            self.update_ui("Diffusion reflected amplitudes around the mean.")
+        self.update_ui()
 
     def step(self):
         self.measured_index = None
@@ -347,32 +257,19 @@ class GroverViz(Entity):
 
     def toggle_run(self):
         self.running = not self.running
-        self._set_button_label(self.start_button, "Pause" if self.running else "Start")
-        self.update_ui("Auto-play running." if self.running else "Paused.")
+        self.buttons["start"].set_text("Pause" if self.running else "Start")
+        self.update_ui()
 
-    def measure_state(self):
+    def measure_current_state(self):
         self.running = False
-        self._set_button_label(self.start_button, "Start")
-
-        threshold = random()
-        cumulative = 0.0
-        result = self.n_states - 1
-        for index, amplitude in enumerate(self.amplitudes):
-            cumulative += amplitude * amplitude
-            if threshold <= cumulative:
-                result = index
-                break
-
+        self.buttons["start"].set_text("Start")
+        result = measure_state(self.amplitudes)
         self.measured_index = result
         self.amplitudes = [0.0 for _ in range(self.n_states)]
         self.amplitudes[result] = 1.0
         self.last_mean = 1.0 / self.n_states
         self.update_visuals(animated=False)
-
-        if result == self.marked_index:
-            self.update_ui(f"Measured target {self.bit_label(result)}.")
-        else:
-            self.update_ui(f"Measured {self.bit_label(result)}. Target was {self.bit_label(self.marked_index)}.")
+        self.update_ui()
 
     def describe_state(self):
         target_probability = self.amplitudes[self.marked_index] * self.amplitudes[self.marked_index]
@@ -383,27 +280,26 @@ class GroverViz(Entity):
         if self.phase == "oracle":
             if self.iteration == 0:
                 return f"Ready. Target {self.bit_label(self.marked_index)} starts at {target_probability:.0%}."
-            if self.iteration >= self.optimal_iterations():
+            if self.iteration >= self.goal_iterations():
                 return f"Peak reached. Target {self.bit_label(self.marked_index)} at {target_probability:.0%}."
             return f"Iteration {self.iteration}: target {self.bit_label(self.marked_index)} at {target_probability:.0%}."
         return f"Oracle flips target {self.bit_label(self.marked_index)}."
 
-    def update_ui(self, status):
+    def update_ui(self):
         target_amplitude = self.amplitudes[self.marked_index]
         target_probability = target_amplitude * target_amplitude
-        self.selection_text.text = (
+        self.selection_text.set_text(
             f"{self.qubits} qubits   {self.n_states} states\n"
-            f"Target {self.bit_label(self.marked_index)}   Goal {self.optimal_iterations()} iterations\n"
+            f"Target {self.bit_label(self.marked_index)}   Goal {self.goal_iterations()} iterations\n"
             f"Speed {self.auto_interval:.1f}s   Current chance {target_probability:.0%}"
         )
-        self.status_banner.text = self.describe_state()
+        self.status_text.set_text(self.describe_state())
 
-    def update(self):
+    def tick(self, dt: float):
         if not self.enabled:
             return
-
         if self.running:
-            self.auto_timer += time.dt
+            self.auto_timer += dt
             if self.auto_timer >= self.auto_interval:
                 self.auto_timer = 0.0
                 self.step()
@@ -418,12 +314,6 @@ class GroverViz(Entity):
         elif key == "m":
             self.increase_marked()
         elif key == "enter":
-            self.measure_state()
-
-    def show(self):
-        self.enabled = True
-
-    def hide(self):
-        self.running = False
-        self.auto_timer = 0.0
-        self.enabled = False
+            self.measure_current_state()
+        elif key == "escape":
+            self.controller.exit_app()
